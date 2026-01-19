@@ -1,0 +1,233 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - v*
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - os: macos-14
+            target: aarch64-apple-darwin
+            runner: macos-14
+          - os: macos-13
+            target: x86_64-apple-darwin
+            runner: macos-13
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: weft-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/weft
+          retention-days: 1
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            git_version: "2.25.0"
+            jj_version: "0.15.0"
+          - os: ubuntu-22.04
+            git_version: "latest"
+            jj_version: "latest"
+          - os: macos-14
+            git_version: "latest"
+            jj_version: "latest"
+          - os: macos-13
+            git_version: "latest"
+            jj_version: "latest"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install specific git version
+        if: matrix.git_version != 'latest'
+        run: |
+          wget -q https://github.com/git/git/archive/refs/tags/v${{ matrix.git_version }}.tar.gz
+          tar xzf v${{ matrix.git_version }}.tar.gz
+          cd git-${{ matrix.git_version }}
+          make -j$(nproc)
+          sudo make install
+          git --version
+        shell: bash
+
+      - name: Install jj
+        run: |
+          if [ "${{ matrix.jj_version }}" = "latest" ]; then
+            cargo install jj-cli
+          else
+            cargo install jj-cli --version ${{ matrix.jj_version }}
+          fi
+          jj --version
+
+      - name: Run tests
+        run: cargo test --release
+
+      - name: Test install script syntax
+        run: |
+          bash -n install.sh
+          echo "install.sh syntax OK"
+
+      - name: Verify binary is executable
+        run: |
+          if [ "${{ matrix.os }}" = "macos-14" ] || [ "${{ matrix.os }}" = "macos-13" ]; then
+            TARGET="aarch64-apple-darwin"
+          else
+            TARGET="x86_64-unknown-linux-gnu"
+          fi
+          chmod +x target/${TARGET}/release/weft
+          ./target/${TARGET}/release/weft --version
+
+  integration-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Install jj
+        run: cargo install jj-cli
+
+      - name: Create test git repo
+        run: |
+          cd /tmp
+          rm -rf weft-integration-test
+          mkdir weft-integration-test
+          cd weft-integration-test
+          git init -b main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "initial" > file.txt
+          git add .
+          git commit -m "initial"
+          jj git init
+          echo "Test repo created at /tmp/weft-integration-test"
+
+      - name: Run weft commands
+        run: |
+          cd /tmp/weft-integration-test
+          WEFTTARGET="${{ matrix.target }}"
+          if [ "${{ matrix.os }}" = "macos-14" ]; then
+            WEFTTARGET="aarch64-apple-darwin"
+          else
+            WEFTTARGET="x86_64-unknown-linux-gnu"
+          fi
+          WEFTPATH="$GITHUB_WORKSPACE/target/${WEFTTARGET}/release/weft"
+
+          $WEFTPATH init
+          echo "world" >> file.txt
+          $WEFTPATH save "test save"
+          $WEFTPATH status
+          $WEFTPATH undo
+
+          echo "Integration test passed on ${{ matrix.os }}"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, test, integration-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+
+      - name: Prepare release
+        run: |
+          ls -la binaries/
+          cd binaries
+          for dir in weft-*; do
+            mv "$dir/weft" "$dir/weft-${dir#weft-}"
+          done
+          cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: binaries/weft-*/
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  homebrew:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Homebrew formula
+        run: |
+          VERSION=$(echo ${{ github.ref }} | sed 's/refs\/tags\/v//')
+          cat > Formula/weft.rb << EOF
+          class Weft < Formula
+            desc "Version control for dummies and teams - async git that never blocks"
+            homepage "https://github.com/weft-vcs/weft"
+            url "https://github.com/weft-vcs/weft/releases/download/v#{version}/weft-x86_64-unknown-linux-gnu"
+            sha256 ""
+            license "MIT"
+
+            depends_on "jj"
+
+            def install
+              bin.install "weft-x86_64-unknown-linux-gnu" => "weft"
+            end
+
+            test do
+              assert_match "weft", shell_output("#{bin}/weft --version").stderr
+            end
+          end
+          EOF
