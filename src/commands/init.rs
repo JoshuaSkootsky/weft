@@ -1,5 +1,5 @@
-use crate::git;
 use crate::config;
+use crate::git;
 use anyhow::Result;
 
 pub fn run() -> Result<()> {
