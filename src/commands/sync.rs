@@ -1,5 +1,5 @@
-use crate::git;
 use crate::config;
+use crate::git;
 use anyhow::Result;
 use std::process::Command;
 
@@ -34,7 +34,10 @@ pub fn run() -> Result<()> {
         .output()?;
 
     if !output.status.success() {
-        println!("Sync encountered issues: {}", String::from_utf8_lossy(&output.stderr));
+        println!(
+            "Sync encountered issues: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     let tangled_count = count_tangled_commits(&repo, &user)?;

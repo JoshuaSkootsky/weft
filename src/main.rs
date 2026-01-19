@@ -3,9 +3,9 @@ use clap::{Parser, Subcommand};
 use std::process::Command;
 
 mod commands;
-mod git;
 mod config;
 mod error;
+mod git;
 
 #[derive(Parser)]
 #[command(name = "weft")]
@@ -18,9 +18,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     #[command(about = "Save current state to your weft (never blocks)")]
-    Save {
-        message: String,
-    },
+    Save { message: String },
     #[command(about = "Sync your weft onto main (conflicts become tangled commits)")]
     Sync,
     #[command(about = "Show weft status and any tangled commits")]
@@ -29,6 +27,12 @@ enum Commands {
     Undo,
     #[command(about = "Initialize weft in an existing git repo")]
     Init,
+    #[command(about = "Push your weft to remote namespace")]
+    Share,
+    #[command(about = "Create a merge candidate for integration")]
+    Propose,
+    #[command(about = "Weave a candidate into main")]
+    Weave { candidate_id: String },
 }
 
 fn main() -> Result<()> {
@@ -43,6 +47,9 @@ fn main() -> Result<()> {
         Commands::Status => commands::status::run(),
         Commands::Undo => commands::undo::run(),
         Commands::Init => commands::init::run(),
+        Commands::Share => commands::share::run(),
+        Commands::Propose => commands::propose::run(),
+        Commands::Weave { candidate_id } => commands::weave::run(&candidate_id),
     }
 }
 

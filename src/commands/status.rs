@@ -1,5 +1,5 @@
-use crate::git;
 use crate::config;
+use crate::git;
 use anyhow::Result;
 use std::process::Command;
 
@@ -24,7 +24,9 @@ pub fn run() -> Result<()> {
         .output()?;
 
     if jj_head_output.status.success() {
-        let jj_head = String::from_utf8_lossy(&jj_head_output.stdout).trim().to_string();
+        let jj_head = String::from_utf8_lossy(&jj_head_output.stdout)
+            .trim()
+            .to_string();
         if let Some(origin_main) = origin_main_oid {
             let ahead_count = count_commits_between(&repo, origin_main.to_string(), jj_head)?;
             println!("Weft: {} commits ahead of warp", ahead_count);
@@ -66,7 +68,8 @@ pub fn run() -> Result<()> {
 
         if output.status.success() {
             let conflicts = String::from_utf8_lossy(&output.stdout);
-            let conflict_lines: Vec<&str> = conflicts.lines().filter(|l| !l.trim().is_empty()).collect();
+            let conflict_lines: Vec<&str> =
+                conflicts.lines().filter(|l| !l.trim().is_empty()).collect();
 
             if !conflict_lines.is_empty() {
                 println!("\nTangled commits:");
@@ -83,7 +86,8 @@ pub fn run() -> Result<()> {
             "log",
             "-r",
             &format!("{}::", weft_head),
-            "-n", "5",
+            "-n",
+            "5",
             "--no-graph",
             "-T",
             r#"description.first_line() ++ " (" ++ commit_id ++ ")" ++ "\n""#,

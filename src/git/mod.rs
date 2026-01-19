@@ -1,21 +1,14 @@
-use git2::{Repository, Oid};
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
+use git2::{Oid, Repository};
 
 pub fn discover() -> Result<Repository> {
-    Repository::discover(".").context("Not in a git repository. Run 'git init' first or cd into a git repo.")
+    Repository::discover(".")
+        .context("Not in a git repository. Run 'git init' first or cd into a git repo.")
 }
 
 pub fn get_head(repo: &Repository) -> Result<Oid> {
     let head = repo.head()?.peel_to_commit()?.id();
     Ok(head)
-}
-
-pub fn resolve_weft_head(repo: &Repository, user: &str) -> Result<Option<Oid>> {
-    let ref_name = format!("refs/weft/{}/head", user);
-    match repo.find_reference(&ref_name) {
-        Ok(ref_) => Ok(Some(ref_.peel_to_commit()?.id())),
-        Err(_) => Ok(None),
-    }
 }
 
 pub fn update_weft_head(repo: &Repository, user: &str, oid: Oid, msg: &str) -> Result<()> {
@@ -47,24 +40,6 @@ pub fn update_op_log(repo: &Repository, new_entry: &str) -> Result<()> {
 
     let blob = repo.blob(new_content.as_bytes())?;
     repo.reference("refs/weft/op-log", blob, true, "append to op-log")?;
-    Ok(())
-}
-
-pub fn fetch_origin_main(repo: &Repository) -> Result<()> {
-    let mut remote = match repo.find_remote("origin") {
-        Ok(remote) => remote,
-        Err(_) => {
-            return Err(anyhow::anyhow!(
-                "Remote 'origin' not found. Add a remote with: git remote add origin <url>"
-            ));
-        }
-    };
-
-    let mut fetch_opts = git2::FetchOptions::new();
-    fetch_opts.update_fetchhead(false);
-
-    remote.fetch(&["main"], Some(&mut fetch_opts), None)?;
-
     Ok(())
 }
 

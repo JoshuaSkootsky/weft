@@ -1,6 +1,6 @@
+use anyhow::Result;
 use git2::Repository;
 use std::env;
-use anyhow::Result;
 
 pub fn get_user(repo: &Repository) -> Result<String> {
     if let Ok(user) = env::var("WEFT_USER") {
@@ -31,15 +31,4 @@ pub fn get_user(repo: &Repository) -> Result<String> {
 fn sanitize_username(name: &str) -> String {
     name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
         .to_lowercase()
-}
-
-pub fn get_user_email(repo: &Repository) -> Result<String> {
-    if let Ok(config) = repo.config() {
-        if let Ok(email) = config.get_string("user.email") {
-            return Ok(email);
-        }
-    }
-
-    let username = whoami::username();
-    Ok(format!("{}@localhost", username))
 }

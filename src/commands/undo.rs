@@ -1,8 +1,8 @@
-use crate::git;
 use crate::config;
+use crate::git;
 use anyhow::Result;
-use std::process::Command;
 use serde_json;
+use std::process::Command;
 
 pub fn run() -> Result<()> {
     let repo = git::discover()?;
@@ -18,7 +18,10 @@ pub fn run() -> Result<()> {
         }
     };
 
-    let lines: Vec<&str> = log_content.lines().filter(|l| !l.trim().is_empty()).collect();
+    let lines: Vec<&str> = log_content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
     if lines.is_empty() {
         return Err(anyhow::anyhow!("No operations to undo"));
     }
